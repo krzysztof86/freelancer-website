@@ -13,10 +13,9 @@ Monorepo zarządzone przez `pnpm workspaces`.
 ├── apps/
 │   └── web/                                # Aplikacja frontendowa Next.js 14+ (App Router)
 │       ├── app/                            # Ścieżki i routing App Router (RSC + Client Components)
-│       │   ├── api/                        # Route Handlery (webhooks, revalidate, checkout, lead, contact)
+│       │   ├── api/                        # Route Handlery (webhooks, revalidate, checkout, lead)
 │       │   │   ├── checkout/               # POST /api/checkout - tworzenie sesji Stripe Checkout
-│       │   │   ├── contact/                # POST /api/contact/route.ts - zapytanie kontaktowe przez Resend
-│       │   │   ├── lead/                   # POST /api/lead/route.ts - zapis leada do WPGraphQL createLead
+│       │   │   ├── lead/                   # POST /api/lead/route.ts - zapytanie z formularza, wywołanie WPGraphQL createLead oraz wysyłka Resend
 │       │   │   ├── revalidate/             # POST /api/revalidate - webhook rewalidacji ISR z WP
 │       │   │   └── webhooks/               # POST /api/webhooks/stripe - webhook zdarzeń Stripe
 │       │   ├── (public)/                   # Strony publiczne (Layout główny, Header, Footer)
@@ -26,7 +25,7 @@ Monorepo zarządzone przez `pnpm workspaces`.
 │       │   │   ├── realizacje/             # Lista portfolio i detal [slug]
 │       │   │   ├── blog/                   # Lista wpisów blogowych i detal [slug]
 │       │   │   ├── cennik/                 # Strona cennika z kalkulatorem
-│       │   │   ├── kontakt/                # Strona kontaktowa z formularzem wyceny
+│       │   │   ├── kontakt/                # Strona kontaktowa z formularzem wyceny/kontaktu
 │       │   │   ├── moje-kursy/             # Publiczny katalog i opis dostępnych kursów
 │       │   │   ├── dziekujemy/             # Strona podziękowania po sfinalizowaniu zakupu w Stripe
 │       │   │   ├── kursy/                  # Publiczna strona sprzedażowa kursu [slug]
@@ -54,7 +53,7 @@ Monorepo zarządzone przez `pnpm workspaces`.
 │       │   │   ├── about-teaser.tsx        # Sekcja 10: O mnie / bio
 │       │   │   ├── faq-section.tsx         # Sekcja 11: Najczęściej zadawane pytania
 │       │   │   ├── blog-preview.tsx        # Sekcja 12: Najnowsze wpisy
-│       │   │   ├── valuation-cta.tsx       # Sekcja 13: Formularz wyceny CTA
+│       │   │   └── valuation-cta.tsx       # Sekcja 13: Formularz wyceny CTA
 │       │   │   └── contact-map.tsx         # apps/web/components/sections/contact-map.tsx - Mapa kontaktowa Google Embed
 │       │   ├── calculator/                 # Interaktywny kalkulator ceny i logika prefillu
 │       │   ├── forms/                      # Formularz wyceny i kontaktowy (React Hook Form)
@@ -65,6 +64,7 @@ Monorepo zarządzone przez `pnpm workspaces`.
 │       │   ├── stripe.ts                   # Inicjalizacja SDK Stripe po stronie serwera
 │       │   ├── resend.ts                   # apps/web/lib/resend.ts - Klient i konfiguracja SDK Resend
 │       │   ├── recaptcha.ts                # apps/web/lib/recaptcha.ts - Weryfikacja tokena ReCAPTCHA v3
+│       │   ├── wp-client.ts                # apps/web/lib/wp-client.ts - Klient GraphQL z Basic Auth do WPGraphQL (mutacje createLead, createDostep, buildy SSG)
 │       │   └── video-signer.ts             # Generowanie podpisywanych URL dla Cloudflare Stream/Vimeo
 │       ├── public/                         # Statyczne zasoby (ikony, favicony, obrazki fallback)
 │       └── tests/                          # Testy jednostkowe, integracyjne (Vitest) i e2e (Playwright)
@@ -95,12 +95,12 @@ Monorepo zarządzone przez `pnpm workspaces`.
 
 ## 2. MODEL DANYCH (WORDPRESS CPT + ACF)
 
-Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z dedykowaną grupą pól ACF (Advanced Custom Fields) wystawioną w WPGraphQL. Wszystkie klucze pól ACF używają wyłącznie znaków ASCII.
+Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z dedykowaną grupą pól ACF (Advanced Custom Fields) wystawioną w WPGraphQL. Wszystkie klucze pól ACF oraz wartości opcji `Select` są bezwzględnie w formacie ASCII.
 
 ### 1. Realizacje (`realizacje`)
 - **Pola systemowe**: `ID`, `post_title` (tytuł projektu), `post_status` (`publish`/`draft`), `post_date`, `post_modified`.
 - **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `klient_nazwa` | Text | T | Nazwa firmy lub marki klienta |
   | `adres_url` | Url | N | Adres URL wdrożonej strony |
@@ -116,7 +116,7 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
 ### 2. Wpisy blogowe (`post` / `wpisy`)
 - **Pola systemowe**: `ID`, `post_title` (tytuł wpisu), `post_name` (slug), `post_status`, `post_date`, `post_modified`.
 - **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `zajawka` | Textarea | T | Opis meta/zajawka artykułu |
   | `tresc_artykulu` | Wysiwyg | T | Główna treść artykułu w formacie HTML/Gutenberg |
@@ -128,7 +128,7 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
 ### 3. Opinie (`opinie`)
 - **Pola systemowe**: `ID`, `post_title` (nagłówek opinii), `post_status`, `post_date`, `post_modified`.
 - **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `autor_imie_nazwisko` | Text | T | Imię i nazwisko zamawiającego |
   | `autor_stanowisko` | Text | T | Stanowisko (np. CEO, Marketing Director) |
@@ -138,10 +138,10 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
   | `ocena_gwiazdki` | Number | T | Liczba od 1 do 5 |
   | `powiazana_realizacja` | Post Object | N | Relacja 1:1 do CPT `realizacje` |
 
-### 4. Pozycje cennika (`cennik`)
-- **Pola systemowe**: `ID`, `post_title` (nazwa pakietu/usługi), `post_status`, `post_date`, `post_modified`.
-- **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+### 4. Pozycje cennika i Konfiguracja Globalna (`cennik`)
+- **Pola systemowe**: `ID`, `post_title` (nazwa pakietu lub "Konfiguracja Globalna Kalkulatora"), `post_status`, `post_date`, `post_modified`.
+- **Grupa A: Pola pakietu usług**:
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `service_type_slug` | Select | T | Opcje: `strona-wp`, `sklep-woocommerce`, `aplikacja-webowa`, `seo-marketing`, `inne` |
   | `cena_od_netto` | Number | T | Minimalna kwota netto w PLN dla danego pakietu |
@@ -153,11 +153,16 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
   | `multiplier_srednia` | Number | N | Mnożnik średniej złożoności (np. 1.3) |
   | `multiplier_zaawansowana` | Number | N | Mnożnik zaawansowanej złożoności (np. 1.7) |
   | `cost_extra_subpage` | Number | N | Koszt dodatkowej podstrony powyżej limitu |
+- **Grupa B: Pola konfiguracji globalnej kalkulatora**:
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
+  | :--- | :--- | :---: | :--- |
+  | `feature_costs` | Repeater | N | Podgrupa: `feature_key` (Select: `multilingual`, `animations`, `cms-custom`, `speed-opt`, `payment-integration`, `erp-sync`), `feature_cost` (Number) |
+  | `express_delivery_multiplier` | Number | N | Mnożnik trybu ekspresowego (np. 1.30) |
 
 ### 5. FAQ (`faq`)
 - **Pola systemowe**: `ID`, `post_title` (pytanie), `post_status`, `post_date`, `post_modified`.
 - **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `odpowiedz` | Wysiwyg | T | Treść odpowiedzi na pytanie |
   | `kategoria_faq` | Select | T | Opcje: `ogolne`, `strony-www`, `sklepy`, `aplikacje`, `kursy`, `platnosci` |
@@ -166,7 +171,7 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
 ### 6. Kursy (`kursy`)
 - **Pola systemowe**: `ID`, `post_title` (tytuł kursu), `post_name` (slug), `post_status`, `post_date`, `post_modified`.
 - **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `cena_brutto` | Number | T | Cena kursu w PLN brutto |
   | `stripe_price_id` | Text | T | Identyfikator ceny z dashboardu Stripe (`price_...`) |
@@ -178,7 +183,7 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
 ### 7. Dostępy (`dostepy`)
 - **Pola systemowe**: `ID`, `post_title` (automatycznie: `Email - Kurs ID`), `post_status` (`publish`), `post_date`, `post_modified`.
 - **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `user_email` | Email | T | Adres e-mail kupującego pobrany ze Stripe Checkout |
   | `zakupiony_kurs` | Post Object | T | Relacja do CPT `kursy` |
@@ -188,7 +193,7 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
 ### 8. Leady z formularzy (`leady`)
 - **Pola systemowe**: `ID`, `post_title` (automatycznie: `Lead: Imię - Firma - ServiceType`), `post_status` (`publish`), `post_date`, `post_modified`.
 - **Pola ACF**:
-  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja |
+  | Nazwa pola (key/slug) | Typ ACF | Wymagane (T/N) | Opis / Relacja / Wartości Select (ASCII) |
   | :--- | :--- | :---: | :--- |
   | `companyName` | Text | T | Nazwa firmy klienta |
   | `fullName` | Text | T | Imię i nazwisko klienta |
@@ -217,7 +222,7 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
 | `/blog/` | `app/(public)/blog/page.tsx` | ISR | WPGraphQL (Kolekcja CPT `post`) | WPYoast (Page: Blog) |
 | `/blog/[slug]/` | `app/(public)/blog/[slug]/page.tsx` | ISR (`generateStaticParams`) | WPGraphQL (Pojedynczy wpis CPT `post`) | WPYoast (Post metadata + OpenGraph) |
 | `/cennik/` | `app/(public)/cennik/page.tsx` | ISR | WPGraphQL (CPT `cennik` + CPT `faq`) | WPYoast (Page: Cennik) |
-| `/kontakt/` | `app/(public)/kontakt/page.tsx` | Static | Formularz Client Component + Resend API / Lead API | WPYoast (Page: Kontakt) |
+| `/kontakt/` | `app/(public)/kontakt/page.tsx` | Static | Formularz Client Component -> POST `/api/lead` (WPGraphQL `createLead` + Resend) | WPYoast (Page: Kontakt) |
 | `/moje-kursy/` | `app/(public)/moje-kursy/page.tsx` | ISR | WPGraphQL (Katalog i lista dostępnych CPT `kursy`) | WPYoast (Page: Moje Kursy) |
 | `/dziekujemy/` | `app/(public)/dziekujemy/page.tsx` | Dynamic (SSR) | Query params ze Stripe Checkout Session ID | Static ("Podziękowanie za zakup") |
 | `/kursy/[slug]/` | `app/(public)/kursy/[slug]/page.tsx` | ISR (`generateStaticParams`) | WPGraphQL (CPT `kursy` - strona sprzedażowa) | WPYoast (CPT kursy metadata) |
@@ -232,14 +237,14 @@ Każda kolekcja realizowana jest jako Custom Post Type (CPT) w WordPressie z ded
 
 | Route | Typy Schema | Wymagane pola Schema | Źródło danych w WP / App |
 | :--- | :--- | :--- | :--- |
-| `/` | `WebSite`, `Person`, `Organization` | `@id`, `name`, `url`, `logo`, `sameAs`, `address`, `telephone`, `priceRange` | Statyczne dane konfiguracji marki + WP site options |
+| `/` | `WebSite`, `Person`, `Organization` | `@id`, `name`, `url`, `logo`, `sameAs`, `telephone` | Statyczne dane konfiguracji marki + WP site options |
 | `/o-mnie/` | `Person`, `BreadcrumbList` | `name`, `jobTitle`, `worksFor`, `knowsAbout`, `sameAs`, `itemListElement` | Statyczna konfiguracja bio + URL |
 | `/uslugi/` | `BreadcrumbList` | `itemListElement` | Statyczna struktura nawigacji |
 | `/uslugi/[slug]/` | `Service`, `BreadcrumbList` | `name`, `serviceType`, `provider` (`@id` Organization), `areaServed`, `description` | WPGraphQL CPT Usługi / Statyczny szablon usługi |
 | `/realizacje/[slug]/` | `BreadcrumbList` | `itemListElement` | WPGraphQL CPT `realizacje` |
 | `/blog/[slug]/` | `Article`, `BreadcrumbList` | `headline`, `image`, `datePublished`, `dateModified`, `author` (`@id` Person), `publisher` (`@id` Organization) | WPGraphQL CPT `post` |
 | `/cennik/` | `FAQPage`, `BreadcrumbList` | `mainEntity` (tablica pytania/odpowiedzi `Question`/`Answer`) | WPGraphQL CPT `faq` |
-| `/kontakt/` | `BreadcrumbList` | `name`, `telephone`, `email`, `address` | Statyczna konfiguracja firmy |
+| `/kontakt/` | `BreadcrumbList` | `name`, `telephone`, `email`, `areaServed` (wartość: "Polska") | Statyczna konfiguracja firmy |
 
 ### Powiązanie encji za pomocą `@id`:
 - **Organization ID**: `https://domena-freelancera.pl/#organization`
@@ -256,9 +261,9 @@ W schematach podstron `provider` lub `author` odwołuje się bezpośrednio do `{
 
 | Integracja | Miejsce inicjalizacji w kodzie | Wymagane zmienne środowiskowe | Fallback przy braku klucza (Dev Mode) |
 | :--- | :--- | :--- | :--- |
-| **Resend** | `apps/web/lib/resend.ts` & `app/api/contact/route.ts` & `app/api/lead/route.ts` | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_TO_EMAIL` | Logowanie treści wiadomości e-mail w konsoli serwera (`console.log`), zwrot odpowiedzi statusu `200 OK` do formularza. |
-| **WPGraphQL Mutation createLead** | `app/api/lead/route.ts` & `wp-plugin/freelancer-cms-core/inc/graphql-mutations.php` | `WORDPRESS_API_URL`, `WP_APPLICATION_PASSWORD_USER`, `WP_APPLICATION_PASSWORD` | Zapis leada do lokalnego pliku JSON / mock response `200 OK` w środowisku deweloperskim bez połaczenia z WP. |
-| **WPGraphQL Auth** | `apps/web/lib/wp-client.ts` | `WP_APPLICATION_PASSWORD_USER`, `WP_APPLICATION_PASSWORD` | Basic Auth używany dla mutacji leadów, tworzenia dostępów oraz buildów SSG; publiczne zapytania read-only chronione przez CORS. |
+| **Resend** | `apps/web/lib/resend.ts` & `app/api/lead/route.ts` | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_TO_EMAIL` | Logowanie treści wiadomości e-mail w konsoli serwera (`console.log`), zwrot odpowiedzi statusu `200 OK` do formularza. |
+| **WPGraphQL Mutation createLead** | `app/api/lead/route.ts` & `wp-plugin/freelancer-cms-core/inc/graphql-mutations.php` | `WORDPRESS_API_URL`, `WP_APPLICATION_PASSWORD_USER`, `WP_APPLICATION_PASSWORD` | Zapis leada do lokalnego pliku JSON / mock response `200 OK` w środowisku deweloperskim bez połączenia z WP. |
+| **WPGraphQL Auth (wp-client)** | `apps/web/lib/wp-client.ts` | `WP_APPLICATION_PASSWORD_USER`, `WP_APPLICATION_PASSWORD` | Basic Auth używany dla mutacji leadów, tworzenia dostępów oraz buildów SSG; publiczne zapytania read-only chronione przez CORS. |
 | **Stripe** | `apps/web/lib/stripe.ts` & `app/api/checkout/route.ts` & `app/api/webhooks/stripe/route.ts` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Powiadomienie błędu w interfejsie checkoutu: "Płatności są wyłączone w środowisku deweloperskim". |
 | **Cookiebot** | `apps/web/components/analytics/cookiebot.tsx` | `NEXT_PUBLIC_COOKIEBOT_DOMAIN_GROUP_ID` | Komponent CMP nie renderuje skryptu zewnętrznego; analityka traktowana jako domyślnie odrzucona. |
 | **GTM / GA4** | `apps/web/components/analytics/gtm.tsx` | `NEXT_PUBLIC_GTM_ID`, `NEXT_PUBLIC_GA4_ID` | Brak ładowania skryptów gtm.js / gtag.js; zdarzenia `dataLayer.push` przechwytywane przez pustą funkcję mocka. |
@@ -280,7 +285,7 @@ W schematach podstron `provider` lub `author` odwołuje się bezpośrednio do `{
 
 ## 6. FORMULARZ WYCENY — MACIERZ PÓL
 
-Formularz wyceny obsługuje dynamicznie zmienny zestaw pól w zależności od wybranego typu usługi (`serviceType`), walidowany przy użyciu biblioteki Zod (`packages/shared/src/schemas/valuation.ts`).
+Wszystkie formularze w aplikacji (wycena, kontakt, audyt) wysyłają dane do wspólnego endpointu `POST /api/lead`, gdzie tworzony jest zapis w CPT `leady` przez WPGraphQL `createLead` oraz wysyłana jest wiadomość e-mail przez Resend API. Wszystkich wartości Select używają wyłącznie znaków ASCII.
 
 | Typ usługi (`serviceType`) | Widoczne pola | Typ pola | Walidacja Zod | Wymagane (T/N) |
 | :--- | :--- | :--- | :--- | :---: |
@@ -297,7 +302,7 @@ Formularz wyceny obsługuje dynamicznie zmienny zestaw pól w zależności od wy
 | | `existingSiteUrl` | Url | `z.string().url().optional().or(z.literal(''))` | N |
 | | `wpFeatures` | Checkbox Group | `z.array(z.enum(['blog', 'multilingual', 'cms-custom', 'seo-advanced', 'speed-optimization']))` | N |
 | **`sklep-woocommerce`** | `productCountRange` | Select | `z.enum(['1-50', '51-500', '501-5000', '5000+'])` | T |
-| | `integrationsNeeded` | Checkbox Group | `z.array(z.enum(['płatności-blik-card', 'kurierzy-apaczka-inpost', 'erp-faktury', 'allegro-baselinker']))` | N |
+| | `integrationsNeeded` | Checkbox Group | `z.array(z.enum(['platnosci-blik-card', 'kurierzy-apaczka-inpost', 'erp-faktury', 'allegro-baselinker']))` | N |
 | **`aplikacja-webowa`** | `appType` | Select | `z.enum(['saas', 'portal-klienta', 'mvp', 'dysk-internal-system'])` | T |
 | | `authRequirements` | Checkbox Group | `z.array(z.enum(['email-pass', 'social-auth', 'sso-saml', 'role-permissions']))` | N |
 | **`seo-marketing`** | `seoScope` | Select | `z.enum(['local', 'national'])` | T |
@@ -308,7 +313,7 @@ Formularz wyceny obsługuje dynamicznie zmienny zestaw pól w zależności od wy
 
 ## 7. KALKULATOR CENY — ALGORYTM
 
-Kalkulator ceny jest osobnym interaktywnym komponentem na stronie `/cennik/`. Ceny i mnożniki pobierane są dynamicznie z CPT `cennik` przez WPGraphQL.
+Kalkulator ceny jest osobnym interaktywnym komponentem na stronie `/cennik/`. Wszystkie stawki, mnożniki oraz koszty funkcji pobierane są bezwzględnie z CPT `cennik` (w tym konfiguracji globalnej) przez WPGraphQL query `GetPriceConfig.graphql`. Algorytm nie zawiera żadnych hardkodowanych domyślnych wartości cenowych.
 
 ### Struktura `PriceConfig` i zapytanie GraphQL:
 
@@ -326,6 +331,13 @@ export interface PriceConfig {
   featureCosts: Record<string, number>;
   expressDeliveryMultiplier: number;
 }
+
+export class PriceConfigMissingError extends Error {
+  constructor(message = 'Brak wymaganej konfiguracji cennika w CMS') {
+    super(message);
+    this.name = 'PriceConfigMissingError';
+  }
+}
 ```
 
 #### GraphQL Query (`GetPriceConfig.graphql`):
@@ -339,6 +351,11 @@ query GetPriceConfig {
         multiplierSrednia
         multiplierZaawansowana
         costExtraSubpage
+        featureCosts {
+          featureKey
+          featureCost
+        }
+        expressDeliveryMultiplier
       }
     }
   }
@@ -366,30 +383,38 @@ export function calculateProjectEstimate(
   input: CalculatorInput,
   priceConfig: PriceConfig
 ): CalculatorResult {
-  const config = priceConfig.items[input.serviceType] || {
-    basePriceNetto: 5000,
-    multiplierSrednia: 1.3,
-    multiplierZaawansowana: 1.7,
-    costExtraSubpage: 350,
-  };
+  const config = priceConfig.items[input.serviceType];
+  if (!config) {
+    throw new PriceConfigMissingError(`Konfiguracja cenowa dla usługi '${input.serviceType}' nie została zdefiniowana w CMS.`);
+  }
+
+  if (!priceConfig.expressDeliveryMultiplier) {
+    throw new PriceConfigMissingError('Brak zdefiniowanego mnożnika ekspresowego w konfiguracji CPT cennik.');
+  }
 
   const complexityMultipliers: Record<CalculatorInput['complexity'], number> = {
     'podstawowa': 1.0,
-    'średnia': config.multiplierSrednia || 1.3,
-    'zaawansowana': config.multiplierZaawansowana || 1.7,
+    'średnia': config.multiplierSrednia,
+    'zaawansowana': config.multiplierZaawansowana,
   };
+
+  if (!complexityMultipliers[input.complexity]) {
+    throw new PriceConfigMissingError(`Brak zdefiniowanego mnożnika złożoności '${input.complexity}' dla usługi ${input.serviceType}.`);
+  }
 
   const extraSubpages = Math.max(0, input.subpagesCount - 5);
   let totalMin = (config.basePriceNetto * complexityMultipliers[input.complexity]) + (extraSubpages * config.costExtraSubpage);
 
   for (const feature of input.additionalFeatures) {
-    if (priceConfig.featureCosts[feature]) {
-      totalMin += priceConfig.featureCosts[feature];
+    const cost = priceConfig.featureCosts[feature];
+    if (cost === undefined) {
+      throw new PriceConfigMissingError(`Brak zdefiniowanego kosztu opcji opcjonalnej '${feature}' w CPT cennik.`);
     }
+    totalMin += cost;
   }
 
   if (input.expressDelivery) {
-    totalMin *= (priceConfig.expressDeliveryMultiplier || 1.30);
+    totalMin *= priceConfig.expressDeliveryMultiplier;
   }
 
   const roundedMin = Math.round(totalMin / 100) * 100;
@@ -422,7 +447,7 @@ Podział projektu na 42 granularne zadania implementacyjne (szacowany czas reali
 | **TASK-03** | Konfiguracja środowiska Docker dla WordPress | TASK-01 | 1. Plik `wp-plugin/docker-compose.yml` uruchamia kontenery WordPress, MySQL, Mailpit.<br>2. Dostępność panelu WP pod `localhost:8000`. |
 | **TASK-04** | Inicjalizacja wtyczki PHP `freelancer-cms-core` | TASK-03 | 1. Plik `freelancer-cms-core.php` aktywuje się w panelu WP.<br>2. Rejestruje stałe i strukturę katalogów w `wp-plugin/freelancer-cms-core/inc/`. |
 | **TASK-05** | Rejestracja 8 CPT w pluginie PHP | TASK-04 | 1. Kod PHP rejestruje 8 CPT: `realizacje`, `post`, `opinie`, `cennik`, `faq`, `kursy`, `dostepy`, `leady`.<br>2. Wszystkie CPT widoczne w menu WordPress Admin. |
-| **TASK-06** | Definicje pól ACF w JSON (pola ASCII) | TASK-05 | 1. Pliki JSON w `inc/acf-fields/` definiują komplet pól z Sekcji 2 bez polskich znaków w kluczach.<br>2. Pola widoczne w edytorze każdego CPT w panelu WP. |
+| **TASK-06** | Definicje pól ACF w JSON (pola i opcje Select ASCII) | TASK-05 | 1. Pliki JSON w `inc/acf-fields/` definiują komplet pól z Sekcji 2 bez polskich znaków w kluczach i wartościach opcji Select.<br>2. Pola i podgrupa konfiguracji globalnej cennika widoczne w edytorze WP. |
 | **TASK-07** | Instalacja i aktywacja WPGraphQL & ACF GraphQL | TASK-05 | 1. Wtyczki WPGraphQL, WPGraphQL for ACF, WPGraphQL Yoast są aktywne.<br>2. Endpoint `/graphql` odpowiada na zapytanie Introspection. |
 | **TASK-08** | Mutacja WPGraphQL `createLead` i obsługa zapisów | TASK-07 | 1. Plik `inc/graphql-mutations.php` rejestruje mutację `createLead`.<br>2. Mutacja przyjmuje pola z Sekcji 2 CPT `leady` i tworzy wpis o statusie `nowy`. |
 | **TASK-09** | Action Scheduler Hook dla ISR Revalidation | TASK-07 | 1. Plik `inc/isr-revalidate-hook.php` podczepia pod `save_post` i `edited_term` asynchroniczny task w Action Scheduler.<br>2. Wysyła request POST do Next.js `/api/revalidate`. |
@@ -451,9 +476,9 @@ Podział projektu na 42 granularne zadania implementacyjne (szacowany czas reali
 | **TASK-31b** | Detal Portfolio (`/realizacje/[slug]/`) | TASK-31a | 1. Podstrona pojedynczego projektu z wyzwaniem biznesowym, metrykami i galerią screenów. |
 | **TASK-32a** | Lista Bloga (`/blog/`) | TASK-11, TASK-15 | 1. Strona listy wpisów z czasem czytania i podziałem na kategorie. |
 | **TASK-32b** | Detal Artykułu Blogowego (`/blog/[slug]/`) | TASK-32a | 1. Strona artykułu z renderowaniem HTML, sekcją bio autora i JSON-LD `Article`. |
-| **TASK-33** | Podstrona Cennika & Kalkulator z dynamicznym PriceConfig (`/cennik/`) | TASK-11, TASK-12, TASK-15 | 1. Server Component pobiera `PriceConfig` z CPT `cennik` przez GraphQL i przekazuje do Client Component kalkulatora.<br>2. Kalkulator przelicza dynamicznie kwoty i umożliwia przekierowanie z prefill.<br>3. Test jednostkowy logiki (Vitest) pokrywa happy path + 2 przypadki brzegowe. |
-| **TASK-34** | Podstrona Kontaktowa & Formularz Wyceny (`/kontakt/`) | TASK-12, TASK-15 | 1. Komponent formularza z obsługą prefilla z query params, polem honeypot i ReCAPTCHA v3.<br>2. Test jednostkowy logiki (Vitest) pokrywa happy path + 2 przypadki brzegowe. |
-| **TASK-35** | Integracja Route Handler Contact & Lead API | TASK-34 | 1. Handler `app/api/lead/route.ts` waliduje dane Zod, wysyła mutację `createLead` do WP i powiadomienie przez Resend.<br>2. Test jednostkowy logiki (Vitest) pokrywa happy path + 2 przypadki brzegowe. |
+| **TASK-33** | Podstrona Cennika & Kalkulator z dynamicznym PriceConfig (`/cennik/`) | TASK-11, TASK-12, TASK-15 | 1. Server Component pobiera `PriceConfig` z CPT `cennik` przez GraphQL `GetPriceConfig` i przekazuje do Client Component kalkulatora.<br>2. Kalkulator wylicza stawki wyłącznie na podstawie przekazanej konfiguracji z CMS.<br>3. W przypadku braku pól konfiguracyjnych algorytm rzuca `PriceConfigMissingError`, a UI wyświetla komunikat "Kalkulator tymczasowo niedostępny".<br>4. Test jednostkowy logiki (Vitest) pokrywa happy path + obsługa błędu `PriceConfigMissingError` + 2 przypadki brzegowe. |
+| **TASK-34** | Podstrona Kontaktowa & Formularz Wyceny (`/kontakt/`) | TASK-12, TASK-15 | 1. Komponent formularza z obsługą prefilla z query params, polem honeypot i ReCAPTCHA v3 wysyłający dane do `POST /api/lead`.<br>2. Test jednostkowy logiki (Vitest) pokrywa happy path + 2 przypadki brzegowe. |
+| **TASK-35** | Integracja Route Handler Lead API (`POST /api/lead`) | TASK-34 | 1. Handler `app/api/lead/route.ts` waliduje dane Zod, wysyła mutację `createLead` do WP przez `wp-client.ts` oraz powiadomienie przez Resend SDK.<br>2. Test jednostkowy logiki (Vitest) pokrywa happy path + 2 przypadki brzegowe. |
 | **TASK-36** | Moduł LMS — Checkout Stripe & Webhook (`/api/checkout`) | TASK-11 | 1. Handler `app/api/checkout` tworzy sesję Stripe Checkout dla CPT `kursy`.<br>2. Webhook `/api/webhooks/stripe` zapisuje zakup do CPT `dostepy` w WP.<br>3. Test jednostkowy logiki (Vitest) pokrywa happy path + 2 przypadki brzegowe. |
 | **TASK-37a** | LMS — NextAuth Magic Link & Konfiguracja Resend | TASK-36 | 1. Konfiguracja NextAuth.js z dostawcą Email przez Resend SDK. |
 | **TASK-37b** | LMS — Middleware Ochrony Ścieżek Kursanta | TASK-37a | 1. Middleware Next.js weryfikujący sesję na ścieżkach `/panel-kursanta/*`. |
@@ -476,7 +501,7 @@ Wykaz decyzji architektonicznych i technologicznych, które wymagają zatwierdze
 | **DEC-02** | **Hosting i Podpisywanie Plików Wideo LMS** | **Opcja A**: Cloudflare Stream (signed URL / HMAC token)<br>**Opcja B**: Vimeo OTT / Pro (Domain restriction + JWT)<br>**Opcja C**: AWS S3 + CloudFront Signed URLs | **Rekomendacja: Opcja A (Cloudflare Stream)**. Najprostsze API, natywna obsługa odtwarzacza HLS, bardzo dobre zabezpieczenie przed pobieraniem i niskie koszty za minutę streamingu. |
 | **DEC-03** | **Zarządzanie Sesją i Autoryzacją Kursanta** | **Opcja A**: NextAuth.js z Passwordless Magic Link (Resend)<br>**Opcja B**: Supabase Auth (tylko do obsługi logowania)<br>**Opcja C**: WordPress Native Auth JWT | **Rekomendacja: Opcja A (NextAuth.js Magic Link)**. Eliminacja konieczności pamiętania haseł przez kursantów, bezpośrednie mapowanie e-maila zakupu ze Stripe bez dodatkowego zewnętrznego providera bazodanowego. |
 | **DEC-04** | **Platforma CMP dla Consent Mode v2** | **Opcja A**: Cookiebot (oficjalna wtyczka / skrypt)<br>**Opcja B**: CookieFirst<br>**Opcja C**: Customowy banner zgodny z GTM Consent Mode v2 | **Rekomendacja: Opcja A (Cookiebot)**. Pełna automatyzacja skanowania ciasteczek i natywna integracja z szablonem GTM Google Consent Mode v2. |
-| **DEC-05** | **Rozszerzenie Typów Schema.org w Przyszłości** | **Opcja A**: Pozostanie ściśle przy zdefiniowanej liście (Person, Organization, Service, FAQPage, Article)<br>**Opcja B**: Rozszerzenie w kolejnej iteracji o `Course` i `Offer` dla strony kursu | **Rekomendacja: Opcja B**. Aktualnie zachowujemy 1:1 listę ze specyfikacji, lecz w sekcji kursowej w przyszłości warto dodać Schema `Course` i `Offer` w celu uzyskania Rich Snippets w wyszukiwarce. |
+| **DEC-05** | **Rozszerzenie Typów Schema.org w Przyszłości** | **Opcja A**: Pozostanie ściśle przy zdefiniowanej liście (WebSite, Person, Organization, Service, FAQPage, Article, BreadcrumbList)<br>**Opcja B**: Rozszerzenie w kolejnej iteracji o `Course` i `Offer` dla strony kursu | **Rekomendacja: Opcja B**. Aktualnie zachowujemy 1:1 listę ze specyfikacji (7 typów schema), lecz w sekcji kursowej w przyszłości warto dodać Schema `Course` i `Offer` w celu uzyskania Rich Snippets w wyszukiwarce. |
 | **DEC-06** | **Mechanizm Obsługi Błędów w Wysyłce Webhooka ISR z WP** | **Opcja A**: Synchroniczny request HTTP z cURL przy `save_post`<br>**Opcja B**: Asynchroniczna kolejka WP Action Scheduler | **Rekomendacja: Opcja B (Action Scheduler)**. Zapobiega opóźnieniom i zawieszaniu panelu administracyjnego WordPressa w przypadku chwilowej niedostępności API Next.js. |
 | **DEC-07** | **Wykorzystanie WooCommerce do Sprzedaży Kursów** | **Opcja A**: Kursy tylko przez Stripe w Next.js + zapis do CPT `dostepy` (BEZ WooCommerce)<br>**Opcja B**: Zainstalowanie i konfiguracja WooCommerce na WordPressie | **Rekomendacja: Opcja A**. Mniej ruchomych części, szybszy proces checkoutu w Next.js oraz natywna integracja ze Stripe bez konieczności utrzymywania ciężkiej wtyczki WooCommerce w MVP. |
 | **DEC-08** | **Obsługa Trybu Podglądu (Preview / Draft Mode)** | **Opcja A**: Natywny Next.js Draft Mode + edycja w panelu WP z podglądem na żywo<br>**Opcja B**: Pomijamy podgląd w MVP, praca na opublikowanych wpisach | **Rekomendacja: Opcja B dla MVP** (wdrożenie natywnego Draft Mode w 2. iteracji po uruchomieniu podstawowej wersji serwisu). |
