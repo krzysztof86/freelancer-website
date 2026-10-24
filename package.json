@@ -1,0 +1,16 @@
+{
+  "name": "@freelancer/monorepo",
+  "private": true,
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "dev": "echo TODO",
+    "build": "echo TODO",
+    "test": "echo TODO",
+    "codegen": "echo TODO",
+    "lint": "echo TODO"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.6.3"
+  }
+}
