@@ -6,6 +6,8 @@
     "moduleResolution": "Bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "declaration": true,
+    "declarationMap": true,
     "baseUrl": ".",
     "paths": {
       "@freelancer/shared/*": ["./packages/shared/src/*"]
