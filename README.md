@@ -25,7 +25,7 @@ Główne katalogi monorepo:
 
 1. Klonowanie i instalacja:
 ```bash
-git clone <url>
+git clone https://github.com/krzysztof86/freelancer-website.git
 cd freelancer-website
 nvm use
 corepack enable
